@@ -342,17 +342,17 @@ bot(
       const targets = loadTargets()
       const listText =
         targets.length > 0
-          ? targets.map((t, idx) => `${idx + 1}. @${t.replace('@s.whatsapp.net', '')}`).join('\n')
+          ? targets.map((t, idx) => `${idx + 1}. \`${t}\` (@${t.replace('@s.whatsapp.net', '')})`).join('\n')
           : '_(No targets currently tracked)_'
 
       const msg =
         `🎯 *SECRET TARGET STATUS TRACKER*\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `📌 *Monitored Targets:*\n${listText}\n\n` +
+        `📌 *Monitored Target JIDs:*\n${listText}\n\n` +
         `💾 *Active Cached Statuses:* ${statusCache.size}\n\n` +
         `🛠️ *Available Commands:*\n` +
-        `• \`.trackstatus add <number>\` — Add a new target\n` +
-        `• \`.trackstatus del <number>\` — Remove a target\n` +
+        `• \`.trackstatus add <jid>\` — Add a new target JID\n` +
+        `• \`.trackstatus del <jid>\` — Remove a target JID\n` +
         `• \`.trackstatus test\` — Send a test verification alert\n` +
         `• \`.trackstatus list\` — View monitored target list\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -376,44 +376,46 @@ bot(
       return await message.send('✅ Test alert has been sent to your private chat (Message Yourself)!')
     }
 
-    // .trackstatus add <number>
+    // .trackstatus add <jid>
     if (subCmd === 'add') {
-      const jid = cleanJid(targetArg)
+      const inputJid = targetArg || message.reply_message?.participant || message.reply_message?.jid
+      const jid = cleanJid(inputJid)
       if (!jid) {
-        return await message.send('❌ Please provide a valid phone number.\nExample: `.trackstatus add 994402551176`')
+        return await message.send('❌ Please provide a valid JID (or reply to target message).\nExample: `.trackstatus add 994402551176@s.whatsapp.net`')
       }
       const targets = loadTargets()
       if (targets.includes(jid)) {
-        return await message.send(`⚠️ This number is already being tracked: @${jid.replace('@s.whatsapp.net', '')}`, {
+        return await message.send(`⚠️ This JID is already being tracked:\n\`${jid}\` (@${jid.replace('@s.whatsapp.net', '')})`, {
           contextInfo: { mentionedJid: [jid] },
         })
       }
       targets.push(jid)
       saveTargets(targets)
       return await message.send(
-        `✅ *Target Added Successfully!*\nStatus updates from @${jid.replace('@s.whatsapp.net', '')} will now be forwarded upon deletion or expiration.`,
+        `✅ *Target JID Added Successfully!*\n\`${jid}\`\nStatus updates from @${jid.replace('@s.whatsapp.net', '')} will now be forwarded upon deletion or expiration.`,
         { contextInfo: { mentionedJid: [jid] } }
       )
     }
 
-    // .trackstatus del <number>
+    // .trackstatus del <jid>
     if (subCmd === 'del' || subCmd === 'remove') {
-      const jid = cleanJid(targetArg)
+      const inputJid = targetArg || message.reply_message?.participant || message.reply_message?.jid
+      const jid = cleanJid(inputJid)
       if (!jid) {
-        return await message.send('❌ Please provide a valid phone number.\nExample: `.trackstatus del 994402551176`')
+        return await message.send('❌ Please provide a valid JID.\nExample: `.trackstatus del 994402551176@s.whatsapp.net`')
       }
       let targets = loadTargets()
       if (!targets.includes(jid)) {
-        return await message.send('⚠️ This number is not in the tracked list.')
+        return await message.send('⚠️ This JID is not in the tracked list.')
       }
       targets = targets.filter((t) => t !== jid)
       saveTargets(targets)
-      return await message.send(`🗑️ Target removed: @${jid.replace('@s.whatsapp.net', '')}`, {
+      return await message.send(`🗑️ Target JID removed:\n\`${jid}\` (@${jid.replace('@s.whatsapp.net', '')})`, {
         contextInfo: { mentionedJid: [jid] },
       })
     }
 
-    // Direct number passed: .trackstatus 994402551176
+    // Direct JID passed: .trackstatus 994402551176@s.whatsapp.net
     const directJid = cleanJid(rawMatch)
     if (directJid) {
       const targets = loadTargets()
@@ -421,11 +423,11 @@ bot(
         targets.push(directJid)
         saveTargets(targets)
         return await message.send(
-          `✅ *Target Added Successfully!*\nNow tracking status updates from @${directJid.replace('@s.whatsapp.net', '')}.`,
+          `✅ *Target JID Added Successfully!*\n\`${directJid}\`\nNow tracking status updates from @${directJid.replace('@s.whatsapp.net', '')}.`,
           { contextInfo: { mentionedJid: [directJid] } }
         )
       } else {
-        return await message.send(`ℹ️ This target is already being tracked: @${directJid.replace('@s.whatsapp.net', '')}`, {
+        return await message.send(`ℹ️ This target JID is already being tracked:\n\`${directJid}\` (@${directJid.replace('@s.whatsapp.net', '')})`, {
           contextInfo: { mentionedJid: [directJid] },
         })
       }

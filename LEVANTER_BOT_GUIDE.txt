@@ -27,10 +27,11 @@ E. Secret Target Status Tracker (Option B: Sirf 1-2 logon ke Status track karna)
      ya jab 24 ghante poore hone par status EXPIRE hokar hatega —
      bot us photo, video ya text ko caption ke sath direct aapke PERSONAL DM me bhej dega!
    - CHECK / LIST KAREIN:    .trackstatus
-   - TARGET ADD KAREIN:      .trackstatus add 994402551176
-   - TARGET HATAYEIN:        .trackstatus del 994402551176
+   - TARGET ADD KAREIN:      .trackstatus add 994402551176@s.whatsapp.net
+     (Tip: Kisi ke bhi message par Swipe/Reply karke '.trackstatus add' bhi likh sakte hain)
+   - TARGET HATAYEIN:        .trackstatus del 994402551176@s.whatsapp.net
    - TEST KAREIN:            .trackstatus test
-   (Default: 994402551176 pehle se tracked hai!)
+   (Default Target: 994402551176@s.whatsapp.net pehle se tracked hai!)
 
 
 2. MESSAGE SCHEDULER (.setschedule)
