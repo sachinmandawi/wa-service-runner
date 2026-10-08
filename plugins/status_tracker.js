@@ -119,14 +119,14 @@ async function forwardStatusToOwner(sock, item, alertType) {
       `👤 *Target:* @${targetNumber}\n` +
       `📅 *Posted At:* ${postedTime}\n` +
       `🗑️ *Deleted At:* ${eventTime}\n` +
-      `⚠️ *Unhone ye status abhi-abhi DELETE kiya hai!*`
+      `⚠️ *This status was just deleted by the target!*`
   } else {
     header =
       `⏳ *SECRET TARGET TRACKER — STATUS EXPIRED!* ⏱️\n\n` +
       `👤 *Target:* @${targetNumber}\n` +
       `📅 *Posted At:* ${postedTime}\n` +
       `⌛ *Expired At:* ${eventTime}\n` +
-      `ℹ️ *24 Ghante poore hone par WhatsApp se hat gaya.*`
+      `ℹ️ *24 hours completed — status removed from WhatsApp.*`
   }
 
   const mentions = [item.targetJid]
@@ -343,7 +343,7 @@ bot(
       const listText =
         targets.length > 0
           ? targets.map((t, idx) => `${idx + 1}. @${t.replace('@s.whatsapp.net', '')}`).join('\n')
-          : '_(Koi target add nahi hai)_'
+          : '_(No targets currently tracked)_'
 
       const msg =
         `🎯 *SECRET TARGET STATUS TRACKER*\n` +
@@ -351,13 +351,13 @@ bot(
         `📌 *Monitored Targets:*\n${listText}\n\n` +
         `💾 *Active Cached Statuses:* ${statusCache.size}\n\n` +
         `🛠️ *Available Commands:*\n` +
-        `• \`.trackstatus add <number>\` - Target add karein\n` +
-        `• \`.trackstatus del <number>\` - Target hatayein\n` +
-        `• \`.trackstatus test\` - Test alert check karein\n` +
-        `• \`.trackstatus list\` - Targets list dekhein\n` +
+        `• \`.trackstatus add <number>\` — Add a new target\n` +
+        `• \`.trackstatus del <number>\` — Remove a target\n` +
+        `• \`.trackstatus test\` — Send a test verification alert\n` +
+        `• \`.trackstatus list\` — View monitored target list\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
         `💡 *Feature Rule:*\n` +
-        `Jab bhi target status lagakar *DELETE* karega, ya 24h poore hone par *EXPIRE* hoga — bot turant media & text aapke *Private DM* me bhej dega!`
+        `Whenever a monitored target posts a status and *DELETES* it, or when it *EXPIRES* after 24h — the media & text will be forwarded directly to your *Private DM*!`
 
       return await message.send(msg, { contextInfo: { mentionedJid: targets } })
     }
@@ -365,33 +365,33 @@ bot(
     // .trackstatus test
     if (subCmd === 'test') {
       const ownerJid = getOwnerJid(message.client)
-      if (!ownerJid) return await message.send('❌ Owner chat identify nahi ho saka.')
+      if (!ownerJid) return await message.send('❌ Could not identify owner private chat.')
 
       const testAlert =
         `🔔 *TRACKER TEST ALERT (System Verified!)* 🕵️‍♂️\n\n` +
-        `✅ Aapka Private DM receiver bilkul theek kaam kar raha hai!\n` +
-        `Jab bhi monitored target koi status delete karega ya 24h khatam hoga, wo seedhe aapke is chat me aa jayega.`
+        `✅ Your Private DM receiver is working perfectly!\n` +
+        `Whenever a monitored target deletes a status or when it expires after 24 hours, it will be delivered directly here.`
 
       await message.client.sendMessage(ownerJid, { text: testAlert })
-      return await message.send('✅ Test alert aapke private chat (Message Yourself) me bhej diya gaya hai!')
+      return await message.send('✅ Test alert has been sent to your private chat (Message Yourself)!')
     }
 
     // .trackstatus add <number>
     if (subCmd === 'add') {
       const jid = cleanJid(targetArg)
       if (!jid) {
-        return await message.send('❌ Valid phone number dijiye.\nExample: `.trackstatus add 994402551176`')
+        return await message.send('❌ Please provide a valid phone number.\nExample: `.trackstatus add 994402551176`')
       }
       const targets = loadTargets()
       if (targets.includes(jid)) {
-        return await message.send(`⚠️ Ye number pehle se tracked hai: @${jid.replace('@s.whatsapp.net', '')}`, {
+        return await message.send(`⚠️ This number is already being tracked: @${jid.replace('@s.whatsapp.net', '')}`, {
           contextInfo: { mentionedJid: [jid] },
         })
       }
       targets.push(jid)
       saveTargets(targets)
       return await message.send(
-        `✅ *Target Added Successfully!*\nAb @${jid.replace('@s.whatsapp.net', '')} ka status delete ya expire hone par aapko turant mil jayega.`,
+        `✅ *Target Added Successfully!*\nStatus updates from @${jid.replace('@s.whatsapp.net', '')} will now be forwarded upon deletion or expiration.`,
         { contextInfo: { mentionedJid: [jid] } }
       )
     }
@@ -400,11 +400,11 @@ bot(
     if (subCmd === 'del' || subCmd === 'remove') {
       const jid = cleanJid(targetArg)
       if (!jid) {
-        return await message.send('❌ Valid phone number dijiye.\nExample: `.trackstatus del 994402551176`')
+        return await message.send('❌ Please provide a valid phone number.\nExample: `.trackstatus del 994402551176`')
       }
       let targets = loadTargets()
       if (!targets.includes(jid)) {
-        return await message.send('⚠️ Ye number tracked list me nahi hai.')
+        return await message.send('⚠️ This number is not in the tracked list.')
       }
       targets = targets.filter((t) => t !== jid)
       saveTargets(targets)
@@ -421,16 +421,16 @@ bot(
         targets.push(directJid)
         saveTargets(targets)
         return await message.send(
-          `✅ *Target Added Successfully!*\n@${directJid.replace('@s.whatsapp.net', '')} track hona shuru ho gaya.`,
+          `✅ *Target Added Successfully!*\nNow tracking status updates from @${directJid.replace('@s.whatsapp.net', '')}.`,
           { contextInfo: { mentionedJid: [directJid] } }
         )
       } else {
-        return await message.send(`ℹ️ Ye target already tracked hai: @${directJid.replace('@s.whatsapp.net', '')}`, {
+        return await message.send(`ℹ️ This target is already being tracked: @${directJid.replace('@s.whatsapp.net', '')}`, {
           contextInfo: { mentionedJid: [directJid] },
         })
       }
     }
 
-    return await message.send('❓ Command samajh nahi aayi. `.trackstatus` type karke help dekhein.')
+    return await message.send('❓ Command not recognized. Send `.trackstatus` for instructions.')
   }
 )
