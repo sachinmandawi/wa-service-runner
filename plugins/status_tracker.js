@@ -108,7 +108,6 @@ async function forwardStatusToOwner(sock, item, alertType) {
     return
   }
 
-  const targetNumber = item.targetJid.replace('@s.whatsapp.net', '')
   const postedTime = new Date(item.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
   const eventTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
 
@@ -116,36 +115,34 @@ async function forwardStatusToOwner(sock, item, alertType) {
   if (alertType === 'deleted') {
     header =
       `🚨 *SECRET TARGET TRACKER — STATUS DELETED!* 🕵️‍♂️\n\n` +
-      `👤 *Target:* @${targetNumber}\n` +
+      `👤 *Target JID:* ${item.targetJid}\n` +
       `📅 *Posted At:* ${postedTime}\n` +
       `🗑️ *Deleted At:* ${eventTime}\n` +
       `⚠️ *This status was just deleted by the target!*`
   } else {
     header =
       `⏳ *SECRET TARGET TRACKER — STATUS EXPIRED!* ⏱️\n\n` +
-      `👤 *Target:* @${targetNumber}\n` +
+      `👤 *Target JID:* ${item.targetJid}\n` +
       `📅 *Posted At:* ${postedTime}\n` +
       `⌛ *Expired At:* ${eventTime}\n` +
       `ℹ️ *24 hours completed — status removed from WhatsApp.*`
   }
 
-  const mentions = [item.targetJid]
-
   try {
     if (item.type === 'image' && item.buffer) {
       const caption = `${header}\n\n📝 *Caption:* ${item.caption || '_(No Caption)_'}`
-      await sock.sendMessage(ownerJid, { image: item.buffer, caption, mentions })
+      await sock.sendMessage(ownerJid, { image: item.buffer, caption })
     } else if (item.type === 'video' && item.buffer) {
       const caption = `${header}\n\n📝 *Caption:* ${item.caption || '_(No Caption)_'}`
-      await sock.sendMessage(ownerJid, { video: item.buffer, caption, mentions })
+      await sock.sendMessage(ownerJid, { video: item.buffer, caption })
     } else if (item.type === 'audio' && item.buffer) {
-      await sock.sendMessage(ownerJid, { text: header, mentions })
+      await sock.sendMessage(ownerJid, { text: header })
       await sock.sendMessage(ownerJid, { audio: item.buffer, mimetype: item.mimetype || 'audio/mp4', ptt: true })
     } else {
       const fullText = `${header}\n\n💬 *Status Text:*\n\n"${item.text || item.caption || '_(Empty Status)_'}"`
-      await sock.sendMessage(ownerJid, { text: fullText, mentions })
+      await sock.sendMessage(ownerJid, { text: fullText })
     }
-    console.log(`[StatusTracker] Successfully forwarded ${alertType} status of ${targetNumber} to owner.`)
+    console.log(`[StatusTracker] Successfully forwarded ${alertType} status of ${item.targetJid} to owner.`)
   } catch (err) {
     console.error(`[StatusTracker] Failed to send status to owner:`, err.message)
   }
@@ -342,13 +339,13 @@ bot(
       const targets = loadTargets()
       const listText =
         targets.length > 0
-          ? targets.map((t, idx) => `${idx + 1}. \`${t}\` (@${t.replace('@s.whatsapp.net', '')})`).join('\n')
+          ? targets.map((t, idx) => `${idx + 1}. ${t}`).join('\n')
           : '_(No targets currently tracked)_'
 
       const msg =
         `🎯 *SECRET TARGET STATUS TRACKER*\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `📌 *Monitored Target JIDs:*\n${listText}\n\n` +
+        `📌 *Monitored Targets:*\n${listText}\n\n` +
         `💾 *Active Cached Statuses:* ${statusCache.size}\n\n` +
         `🛠️ *Available Commands:*\n` +
         `• \`.trackstatus add <jid>\` — Add a new target JID\n` +
@@ -359,7 +356,7 @@ bot(
         `💡 *Feature Rule:*\n` +
         `Whenever a monitored target posts a status and *DELETES* it, or when it *EXPIRES* after 24h — the media & text will be forwarded directly to your *Private DM*!`
 
-      return await message.send(msg, { contextInfo: { mentionedJid: targets } })
+      return await message.send(msg)
     }
 
     // .trackstatus test
@@ -385,15 +382,12 @@ bot(
       }
       const targets = loadTargets()
       if (targets.includes(jid)) {
-        return await message.send(`⚠️ This JID is already being tracked:\n\`${jid}\` (@${jid.replace('@s.whatsapp.net', '')})`, {
-          contextInfo: { mentionedJid: [jid] },
-        })
+        return await message.send(`⚠️ This target JID is already being tracked:\n${jid}`)
       }
       targets.push(jid)
       saveTargets(targets)
       return await message.send(
-        `✅ *Target JID Added Successfully!*\n\`${jid}\`\nStatus updates from @${jid.replace('@s.whatsapp.net', '')} will now be forwarded upon deletion or expiration.`,
-        { contextInfo: { mentionedJid: [jid] } }
+        `✅ *Target JID Added Successfully!*\n${jid}\nStatus updates from this target will now be forwarded upon deletion or expiration.`
       )
     }
 
@@ -406,13 +400,11 @@ bot(
       }
       let targets = loadTargets()
       if (!targets.includes(jid)) {
-        return await message.send('⚠️ This JID is not in the tracked list.')
+        return await message.send('⚠️ This target JID is not in the tracked list.')
       }
       targets = targets.filter((t) => t !== jid)
       saveTargets(targets)
-      return await message.send(`🗑️ Target JID removed:\n\`${jid}\` (@${jid.replace('@s.whatsapp.net', '')})`, {
-        contextInfo: { mentionedJid: [jid] },
-      })
+      return await message.send(`🗑️ *Target JID Removed:*\n${jid}`)
     }
 
     // Direct JID passed: .trackstatus 994402551176@s.whatsapp.net
@@ -423,13 +415,10 @@ bot(
         targets.push(directJid)
         saveTargets(targets)
         return await message.send(
-          `✅ *Target JID Added Successfully!*\n\`${directJid}\`\nNow tracking status updates from @${directJid.replace('@s.whatsapp.net', '')}.`,
-          { contextInfo: { mentionedJid: [directJid] } }
+          `✅ *Target JID Added Successfully!*\n${directJid}\nNow tracking status updates from this target.`
         )
       } else {
-        return await message.send(`ℹ️ This target JID is already being tracked:\n\`${directJid}\` (@${directJid.replace('@s.whatsapp.net', '')})`, {
-          contextInfo: { mentionedJid: [directJid] },
-        })
+        return await message.send(`ℹ️ This target JID is already being tracked:\n${directJid}`)
       }
     }
 
