@@ -1,6 +1,5 @@
 const {
   bot,
-  parsedJid,
   validateTime,
   createSchedule,
   delScheduleMessage,
@@ -13,6 +12,12 @@ const {
   jidToNum,
   lang,
 } = require('../lib/')
+
+// Helper to extract clean WhatsApp JIDs without greedily capturing trailing arguments
+function extractJids(text = '') {
+  if (!text) return []
+  return (text.match(/[0-9]+(-[0-9]+|)@[a-zA-Z0-9.-]+/g) || []).map((j) => j.trim())
+}
 
 bot(
   {
@@ -29,52 +34,55 @@ bot(
       return await message.send(lang.plugins.setschedule.no_reply)
     }
 
-    let schedule = parseSchedule(match)
+    const trimmedMatch = match ? match.trim() : ''
+    const parts = trimmedMatch.split(',').map((p) => p.trim())
+    const explicitJids = extractJids(trimmedMatch)
+    const hasOnce = parts.some((p) => p.toLowerCase() === 'once')
 
-    // Ensure schedule.time is trimmed if returned
-    if (schedule && schedule.time) {
-      schedule.time = schedule.time.trim()
-    }
+    // Find valid time argument (e.g., 23-23-8-10, 0-7, 15-22, etc.)
+    const timeCandidate = parts.find(
+      (p) => p.toLowerCase() !== 'once' && !p.includes('@') && validateTime(p.trim())
+    )
 
-    // Fallback: If parseSchedule didn't extract valid time or jids from comma-separated format
-    if (!schedule || !schedule.jids || !schedule.jids.length || !validateTime(schedule.time)) {
-      const parts = match.split(',').map((p) => p.trim())
-      const jids = parsedJid(match)
-      const once = parts.some((p) => p.toLowerCase() === 'once')
-      const timeCandidate = parts.find(
-        (p) => p !== 'once' && !p.includes('@') && validateTime(p.trim())
-      )
+    let schedule = null
 
-      if (timeCandidate) {
-        schedule = {
-          jids: jids.length ? jids : [message.jid],
-          time: timeCandidate.trim(),
-          once: once || (!parts.some((p) => p.toLowerCase() === 'daily') && parts.length > 1),
-        }
+    if (timeCandidate) {
+      schedule = {
+        jids: explicitJids.length > 0 ? explicitJids : [message.jid],
+        time: timeCandidate.trim(),
+        once: hasOnce || (!parts.some((p) => p.toLowerCase() === 'daily') && parts.length > 1),
+      }
+    } else {
+      // Try upstream parseSchedule
+      schedule = parseSchedule(trimmedMatch)
+      if (schedule && schedule.time) {
+        schedule.time = schedule.time.trim()
       }
     }
 
-    // Try NLP schedule fallback if standard parsing still doesn't have valid time
-    if (!schedule || !schedule.jids || !schedule.jids.length || !validateTime(schedule.time)) {
-      const nlp = await nlpSchedule(match, message.id)
-      if (nlp && nlp.time && validateTime(nlp.time)) {
+    // Fallback to NLP if time is still not valid
+    if (!schedule || !schedule.time || !validateTime(schedule.time.trim())) {
+      const nlp = await nlpSchedule(trimmedMatch, message.id)
+      if (nlp && nlp.time && validateTime(nlp.time.trim())) {
         schedule = nlp
       }
     }
 
-    if (!schedule.jids || !schedule.jids.length) {
-      schedule.jids = [message.jid]
+    if (!schedule || !schedule.jids || !schedule.jids.length) {
+      schedule = schedule || {}
+      schedule.jids = explicitJids.length > 0 ? explicitJids : [message.jid]
     }
 
-    const trimmedTime = schedule.time ? schedule.time.trim() : ''
-    const isTimeValid = validateTime(trimmedTime)
+    const finalTime = schedule.time ? schedule.time.trim() : ''
+    const isTimeValid = validateTime(finalTime)
+
     if (!schedule.jids.length || !isTimeValid) {
       return await message.send(lang.plugins.setschedule.usage)
     }
 
     for (let index = 0; index < schedule.jids.length; index++) {
       const jid = schedule.jids[index]
-      const time = validateTime(trimmedTime, index + 1)
+      const time = validateTime(finalTime, index + 1)
       const at = await createSchedule(jid, time, message, true, schedule.once, message.id)
       await message.send(
         lang.plugins.setschedule.scheduled.format(at, isGroup(jid) ? jid : jidToNum(jid)),
@@ -94,9 +102,12 @@ bot(
     type: 'schedule',
   },
   async (message, match) => {
-    const [jid] = parsedJid(match)
-    const schedules = await getScheduleMessage(jid, message.id)
-    if (schedules.length < 1) return await message.send(lang.plugins.getschedule.not_found)
+    const [jid] = extractJids(match)
+    const targetJid = jid || (match && match.includes('@') ? match.trim() : null)
+    const schedules = await getScheduleMessage(targetJid, message.id)
+    if (!schedules || schedules.length < 1) {
+      return await message.send(lang.plugins.getschedule.not_found)
+    }
     let msg = ''
     for (const schedule of schedules) {
       msg += `Jid : ${schedule.jid}\n${lang.plugins.getschedule.time.format(schedule.time)}\n\n`
@@ -114,12 +125,15 @@ bot(
   async (message, match) => {
     if (!match) return await message.send(lang.plugins.delschedule.usage)
     const parts = match.split(',').map((p) => p.trim())
-    const jid = parts[0]
-    const time = parts[1] ? parts[1].trim() : null
-    let [isJid] = parsedJid(jid)
-    const isTimeValid = time ? validateTime(time) : null
+    const jidPart = parts[0]
+    const timePart = parts[1] ? parts[1].trim() : null
+    const [extractedJid] = extractJids(jidPart)
+    let isJid = extractedJid || (jidPart === 'all' ? 'all' : jidPart)
+    const isTimeValid = timePart ? validateTime(timePart) : null
+
     if (!isJid && match !== 'all') return await message.send(lang.plugins.delschedule.usage)
     if (!isJid) isJid = match
+
     const isDeleted = await delScheduleMessage(isJid, isTimeValid, message.id)
     if (!isDeleted) return await message.send(lang.plugins.delschedule.not_found)
     deleteScheduleTask(isJid, isTimeValid, message.id)
