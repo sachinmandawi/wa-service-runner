@@ -21,53 +21,7 @@ D. AFK Mode (Away From Keyboard / Busy Status)
    - DISABLE (Busy Mode Off):         .afk off
      (Ya koi bhi message bhejne se AFK apne aap OFF ho jata hai)
 
-E. Secret Target Status Tracker (Sirf Specific logon ke Status Spy & Anti-Delete)
-   - KYA KARTA HAI:
-     List me daale huye targets jab bhi koi status post karke DELETE karenge,
-     ya jab 24 ghante poore hone par status EXPIRE hokar hatega —
-     bot automatically us photo, video ya text ko caption ke sath direct aapke PERSONAL DM me bhej dega!
-
-   - 1. STATUS & MONITORED LIST CHECK KAREIN:
-        .trackstatus
-        (Ya `.trackstatus list` — isse sabhi monitored target JIDs aur active cache count dikhta hai)
-
-   - 2. SINGLE PERSON ADD KARNA:
-        .trackstatus add 994402551176@s.whatsapp.net
-        (Tip: Kisi ke bhi message par Reply/Swipe karke '.trackstatus add' bhi bhej sakte hain)
-
-   - 3. EK SE ZYADA (MULTIPLE) TARGETS EK SATH ADD KARNA:
-        Comma ',' lagakar ek sath 2 ya usse zyada JIDs add karein:
-        Example (2 Targets ek sath):
-        .trackstatus add 994402551176@s.whatsapp.net, 916264080665@s.whatsapp.net
-
-        Example (3 Targets ek sath):
-        .trackstatus add 994402551176@s.whatsapp.net, 916264080665@s.whatsapp.net, 919876543210@s.whatsapp.net
-
-        (Tip: Alag-alag baari-baari se bhi add kar sakte hain:
-         Pehle: .trackstatus add 994402551176@s.whatsapp.net
-         Fir:   .trackstatus add 916264080665@s.whatsapp.net)
-
-   - 4. TARGETS REMOVE / HATANA:
-        - Ek target hatana:
-          .trackstatus del 916264080665@s.whatsapp.net
-        - Multiple targets ek sath hatana:
-          .trackstatus del 994402551176@s.whatsapp.net, 916264080665@s.whatsapp.net
-        - Sabhi targets ko ek sath clear karna:
-          .trackstatus del all
-
-   - 5. TEST KAREIN:
-        .trackstatus test
-        (Ye check karta hai ki aapke Personal DM me alert sahi se aa raha hai ya nahi)
-
-   - NOTE (MULTIPLE TARGETS WORKING RULE):
-     Dono ya sabhi targets background me independently monitor hote hain.
-     Jab bhi Target 1 koi status delete karega, uska photo/video alert turant aapke DM me aayega:
-       👤 Target JID: 994402551176@s.whatsapp.net
-     Jab Target 2 koi status delete karega, uska alag alert DM me aayega:
-       👤 Target JID: 916264080665@s.whatsapp.net
-     Aur agar koi delete nahi karta to 24h baad expired alert me bhi dono alag-alag aayenge!
-
-F. Profile & Bio Spy / JID Finder (.whois)
+E. Profile & Bio Spy / JID Finder (.whois)
    - KYA KARTA HAI:
      Kisi bhi contact ya group ki Profile Picture (DP), Name, Bio/About status, aur unka exact JID details nikal kar lata hai!
    - KAISE CHALAYEIN:
@@ -75,7 +29,7 @@ F. Profile & Bio Spy / JID Finder (.whois)
         .whois 916264080665@s.whatsapp.net
      2. Kisi ke message par Reply (Swipe) karke:
         .whois
-     (Tip: Status Tracker ya Message Scheduler me kisi ka JID pata karne ke liye '.whois' sabse best command hai!)
+     (Tip: Message Scheduler me kisi ka JID pata karne ke liye '.whois' sabse best command hai!)
 
 
 2. MESSAGE SCHEDULER (.setschedule)
@@ -156,8 +110,8 @@ D. DISABLE / CANCEL KAISE KAREIN:
 ---------------------------------------------
 - Contact / Profile Spy & JID Finder:        .whois 916264080665@s.whatsapp.net  (ya reply karke .whois)
 - Kaun-Kaun se features ON hain list dekhna: .allvar
-- Single Setting / Variable Check karna:     .getvar STATUS_TRACKER
-- Setting Direct Set karna:                  .setvar STATUS_TRACKER = 994402551176@s.whatsapp.net
+- Single Setting / Variable Check karna:     .getvar ANTI_DELETE
+- Setting Direct Set karna:                  .setvar ANTI_DELETE = p
 - Bot Online hai ya nahi check karna:        .ping  ya  .alive
 - Bot ko Restart karna:                      .reboot
 
