@@ -33,6 +33,16 @@ E. Secret Target Status Tracker (Option B: Sirf 1-2 logon ke Status track karna)
    - TEST KAREIN:            .trackstatus test
    (Default Target: 994402551176@s.whatsapp.net pehle se tracked hai!)
 
+F. Profile & Bio Spy / JID Finder (.whois)
+   - KYA KARTA HAI:
+     Kisi bhi contact ya group ki Profile Picture (DP), Name, Bio/About status, aur unka exact JID details nikal kar lata hai!
+   - KAISE CHALAYEIN:
+     1. Direct JID / Number daal kar:
+        .whois 916264080665@s.whatsapp.net
+     2. Kisi ke message par Reply (Swipe) karke:
+        .whois
+     (Tip: Status Tracker ya Message Scheduler me kisi ka JID pata karne ke liye '.whois' sabse best command hai!)
+
 
 2. MESSAGE SCHEDULER (.setschedule)
 ---------------------------------------------
@@ -110,6 +120,7 @@ D. DISABLE / CANCEL KAISE KAREIN:
 
 5. BOT SYSTEM & SETTINGS CHECK
 ---------------------------------------------
+- Contact / Profile Spy & JID Finder:        .whois 916264080665@s.whatsapp.net  (ya reply karke .whois)
 - Kaun-Kaun se features ON hain list dekhna: .allvar
 - Bot Online hai ya nahi check karna:        .ping  ya  .alive
 - Bot ko Restart karna:                      .reboot
