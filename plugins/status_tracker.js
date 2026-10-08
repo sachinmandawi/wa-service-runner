@@ -1,26 +1,25 @@
-const fs = require('fs')
-const path = require('path')
-const { bot } = require('../lib')
-
-// Persistent target storage file
-const TARGETS_FILE = path.join(__dirname, '../tracked_targets.json')
+const { bot, setVar, getVars, delVar } = require('../lib')
 
 // In-memory status cache: msgId -> statusItem
 const statusCache = new Map()
-const MAX_CACHE_ITEMS = 100
+const MAX_CACHE_ITEMS = 200
+
+// In-memory target cache for 0ms lookup latency
+let cachedTargets = []
 
 // Active Baileys socket reference
 let activeSock = null
 let trackerAttached = false
+const attachedSockets = new WeakSet()
 
-// Helper: Normalize JID
+// Helper: Normalize any JID or phone number to pure WhatsApp JID
 function cleanJid(jid) {
   if (!jid || typeof jid !== 'string') return ''
   const num = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '')
   return num ? `${num}@s.whatsapp.net` : ''
 }
 
-// Helper: Parse multiple JIDs from string (comma or space separated)
+// Helper: Parse multiple JIDs from string (comma, newline, or space separated)
 function parseJids(input) {
   if (!input || typeof input !== 'string') return []
   const tokens = input.split(/[\s,]+/).filter(Boolean)
@@ -34,75 +33,98 @@ function parseJids(input) {
   return results
 }
 
-// Helper: Load targets
-function loadTargets() {
-  try {
-    if (fs.existsSync(TARGETS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(TARGETS_FILE, 'utf8'))
-      if (Array.isArray(data)) {
-        return data.map(cleanJid).filter(Boolean)
-      }
-    }
-  } catch (err) {
-    console.error('[StatusTracker] Error reading targets file:', err.message)
-  }
-  return []
+// Sync cached targets from process.env on boot
+if (process.env.STATUS_TRACKER) {
+  cachedTargets = parseJids(process.env.STATUS_TRACKER)
 }
 
-// Helper: Save targets
-function saveTargets(targets) {
+// Helper: Load targets from Levanter's vars / database
+async function loadTargets(messageId) {
   try {
-    const cleaned = Array.from(new Set(targets.map(cleanJid).filter(Boolean)))
-    fs.writeFileSync(TARGETS_FILE, JSON.stringify(cleaned, null, 2), 'utf8')
-    return cleaned
+    const vars = await getVars(messageId)
+    const raw = vars?.STATUS_TRACKER || process.env.STATUS_TRACKER || ''
+    const list = parseJids(raw)
+    cachedTargets = list
+    return list
   } catch (err) {
-    console.error('[StatusTracker] Error saving targets file:', err.message)
-    return targets
+    if (process.env.STATUS_TRACKER) {
+      cachedTargets = parseJids(process.env.STATUS_TRACKER)
+      return cachedTargets
+    }
+    return cachedTargets
   }
+}
+
+// Helper: Save targets via Levanter setVar (persists to Render and displays in .allvar)
+async function saveTargets(targets, messageId) {
+  const cleaned = Array.from(new Set(targets.map(cleanJid).filter(Boolean)))
+  cachedTargets = cleaned
+  const val = cleaned.join(',')
+
+  try {
+    if (cleaned.length > 0) {
+      await setVar({ STATUS_TRACKER: val }, messageId)
+      process.env.STATUS_TRACKER = val
+    } else {
+      await delVar('STATUS_TRACKER', messageId)
+      delete process.env.STATUS_TRACKER
+    }
+  } catch (err) {
+    console.error('[StatusTracker] Error saving targets via setVar:', err.message)
+    process.env.STATUS_TRACKER = val
+  }
+  return cleaned
 }
 
 // Helper: Check if a JID is tracked
 function isTarget(jid) {
   const norm = cleanJid(jid)
   if (!norm) return false
-  const list = loadTargets()
-  return list.includes(norm)
+  return cachedTargets.includes(norm)
 }
 
-// Helper: Get bot owner's private chat JID
-function getOwnerJid(sock) {
-  if (sock?.user?.id) {
-    return cleanJid(sock.user.id)
-  }
+// Helper: Get bot owner's private chat JIDs (both SUDO and bot number to guarantee delivery)
+function getAlertRecipients(sock) {
+  const recipients = new Set()
   try {
     const config = require('../config')
     if (config.SUDO) {
-      const firstSudo = config.SUDO.split(',')[0].trim()
-      return cleanJid(firstSudo)
+      const sudos = config.SUDO.split(',').map(cleanJid).filter(Boolean)
+      for (const s of sudos) recipients.add(s)
     }
   } catch (e) {}
-  return null
+
+  if (sock?.user?.id) {
+    const botNum = cleanJid(sock.user.id)
+    if (botNum) recipients.add(botNum)
+  }
+  return Array.from(recipients)
 }
 
 // Helper: Download media from Baileys message
 async function downloadMediaBuffer(messageContent, mediaType) {
-  let downloadContentFromMessage = null
+  let downloadFn = null
   try {
     const baileys = require('baileys')
-    downloadContentFromMessage = baileys.downloadContentFromMessage
+    downloadFn = baileys.downloadContentFromMessage
   } catch (e1) {
     try {
       const { loadBaileys } = require('../lib/baileys')
       const b = await loadBaileys()
-      downloadContentFromMessage = b.downloadContentFromMessage
-    } catch (e2) {}
+      downloadFn = b.downloadContentFromMessage
+    } catch (e2) {
+      try {
+        const baileys = require('@whiskeysockets/baileys')
+        downloadFn = baileys.downloadContentFromMessage
+      } catch (e3) {}
+    }
   }
 
-  if (!downloadContentFromMessage) {
-    throw new Error('downloadContentFromMessage function not found')
+  if (!downloadFn) {
+    throw new Error('downloadContentFromMessage function not found in baileys')
   }
 
-  const stream = await downloadContentFromMessage(messageContent, mediaType)
+  const stream = await downloadFn(messageContent, mediaType)
   let buffer = Buffer.from([])
   for await (const chunk of stream) {
     buffer = Buffer.concat([buffer, chunk])
@@ -110,12 +132,12 @@ async function downloadMediaBuffer(messageContent, mediaType) {
   return buffer
 }
 
-// Helper: Send status item to owner DM
+// Helper: Send status item to owner's private DM
 async function forwardStatusToOwner(sock, item, alertType) {
   if (!sock) return
-  const ownerJid = getOwnerJid(sock)
-  if (!ownerJid) {
-    console.error('[StatusTracker] Owner JID could not be determined!')
+  const recipients = getAlertRecipients(sock)
+  if (recipients.length === 0) {
+    console.error('[StatusTracker] No alert recipients found!')
     return
   }
 
@@ -139,33 +161,38 @@ async function forwardStatusToOwner(sock, item, alertType) {
       `ℹ️ *24 hours completed — status removed from WhatsApp.*`
   }
 
-  try {
-    if (item.type === 'image' && item.buffer) {
-      const caption = `${header}\n\n📝 *Caption:* ${item.caption || '_(No Caption)_'}`
-      await sock.sendMessage(ownerJid, { image: item.buffer, caption })
-    } else if (item.type === 'video' && item.buffer) {
-      const caption = `${header}\n\n📝 *Caption:* ${item.caption || '_(No Caption)_'}`
-      await sock.sendMessage(ownerJid, { video: item.buffer, caption })
-    } else if (item.type === 'audio' && item.buffer) {
-      await sock.sendMessage(ownerJid, { text: header })
-      await sock.sendMessage(ownerJid, { audio: item.buffer, mimetype: item.mimetype || 'audio/mp4', ptt: true })
-    } else {
-      const fullText = `${header}\n\n💬 *Status Text:*\n\n"${item.text || item.caption || '_(Empty Status)_'}"`
-      await sock.sendMessage(ownerJid, { text: fullText })
+  for (const recipient of recipients) {
+    try {
+      if (item.type === 'image' && item.buffer) {
+        const caption = `${header}\n\n📝 *Caption:* ${item.caption || '_(No Caption)_'}`
+        await sock.sendMessage(recipient, { image: item.buffer, caption })
+      } else if (item.type === 'video' && item.buffer) {
+        const caption = `${header}\n\n📝 *Caption:* ${item.caption || '_(No Caption)_'}`
+        await sock.sendMessage(recipient, { video: item.buffer, caption })
+      } else if (item.type === 'audio' && item.buffer) {
+        await sock.sendMessage(recipient, { text: header })
+        await sock.sendMessage(recipient, { audio: item.buffer, mimetype: item.mimetype || 'audio/mp4', ptt: true })
+      } else {
+        const fullText = `${header}\n\n💬 *Status Text:*\n\n"${item.text || item.caption || '_(Empty Status)_'}"`
+        await sock.sendMessage(recipient, { text: fullText })
+      }
+      console.log(`[StatusTracker] Successfully forwarded ${alertType} status of ${item.targetJid} to ${recipient}`)
+    } catch (err) {
+      console.error(`[StatusTracker] Failed to send status to ${recipient}:`, err.message)
     }
-    console.log(`[StatusTracker] Successfully forwarded ${alertType} status of ${item.targetJid} to owner.`)
-  } catch (err) {
-    console.error(`[StatusTracker] Failed to send status to owner:`, err.message)
   }
 }
 
 // Process and cache incoming status
 async function cacheIncomingStatus(sock, msg, targetJid) {
-  const msgId = msg.key.id
-  if (statusCache.has(msgId)) return
+  const msgId = msg?.key?.id
+  if (!msgId || statusCache.has(msgId)) return
 
-  const m = msg.message
+  let m = msg.message
   if (!m) return
+  if (m.viewOnceMessage?.message) m = m.viewOnceMessage.message
+  if (m.viewOnceMessageV2?.message) m = m.viewOnceMessageV2.message
+  if (m.ephemeralMessage?.message) m = m.ephemeralMessage.message
 
   let type = 'text'
   let buffer = null
@@ -234,7 +261,7 @@ async function handleStatusRevoked(sock, statusId) {
   statusCache.delete(statusId)
 }
 
-// Background worker: check for 24-hour expiration
+// Background worker: check for 24-hour expiration every 30 seconds
 setInterval(async () => {
   if (!activeSock) return
   const now = Date.now()
@@ -252,10 +279,11 @@ setInterval(async () => {
 function attachTracker(sock) {
   if (!sock || !sock.ev) return
   activeSock = sock
-  if (trackerAttached) return
+  if (attachedSockets.has(sock)) return
+  attachedSockets.add(sock)
   trackerAttached = true
 
-  console.log('[StatusTracker] Attached to WhatsApp Baileys socket.')
+  console.log('[StatusTracker] Successfully hooked into WhatsApp Baileys socket!')
 
   // 1. messages.upsert (Detect new statuses & protocol revokes)
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -265,21 +293,23 @@ function attachTracker(sock) {
         if (!msg || !msg.key) continue
 
         const remoteJid = msg.key.remoteJid
-        const participant = msg.key.participant || msg.participant
+        const participant = msg.key.participant || msg.participant || (msg.key.fromMe ? sock.user?.id : '')
 
         // Check incoming status
         if (remoteJid === 'status@broadcast' && participant) {
           const normPart = cleanJid(participant)
           if (isTarget(normPart)) {
+            console.log(`[StatusTracker] Status detected from target: ${normPart}`)
             await cacheIncomingStatus(sock, msg, normPart)
           }
         }
 
         // Check protocolMessage for delete (REVOKE = 0)
         const protoMsg = msg.message?.protocolMessage
-        if (protoMsg && protoMsg.type === 0) {
+        if (protoMsg && (protoMsg.type === 0 || protoMsg.type === 'REVOKE')) {
           const revKey = protoMsg.key
-          if (revKey && revKey.remoteJid === 'status@broadcast' && revKey.id) {
+          if (revKey?.id && statusCache.has(revKey.id)) {
+            console.log(`[StatusTracker] Status revoke detected via protocolMessage: ${revKey.id}`)
             await handleStatusRevoked(sock, revKey.id)
           }
         }
@@ -294,10 +324,11 @@ function attachTracker(sock) {
     try {
       if (!Array.isArray(updates)) return
       for (const u of updates) {
-        if (!u || !u.key) continue
-        if (u.key.remoteJid === 'status@broadcast' && u.key.id) {
-          if (u.update && (u.update.message === null || u.update.status === 0)) {
-            await handleStatusRevoked(sock, u.key.id)
+        const id = u?.key?.id
+        if (id && statusCache.has(id)) {
+          if (u.update?.message === null || u.update?.status === 0 || u.update?.messageStubType === 1) {
+            console.log(`[StatusTracker] Status revoke detected via messages.update: ${id}`)
+            await handleStatusRevoked(sock, id)
           }
         }
       }
@@ -307,22 +338,46 @@ function attachTracker(sock) {
   })
 }
 
-// Hook into Client.prototype.connect to auto-attach on startup
+// Early socket capture: hook into Base and Message class constructors
 try {
-  const { Client } = require('../lib/client')
-  if (Client && Client.prototype && Client.prototype.connect) {
-    const originalConnect = Client.prototype.connect
-    Client.prototype.connect = async function () {
-      const res = await originalConnect.apply(this, arguments)
-      if (this.client) {
-        attachTracker(this.client)
+  const basePath = require.resolve('../lib/class/Base')
+  const OriginalBase = require(basePath)
+  if (OriginalBase) {
+    function WrappedBase(client) {
+      if (client) {
+        try { attachTracker(client) } catch (e) {}
       }
-      return res
+      return Reflect.construct(OriginalBase, [client], new.target || WrappedBase)
     }
+    WrappedBase.prototype = Object.create(OriginalBase.prototype)
+    WrappedBase.prototype.constructor = WrappedBase
+    require.cache[basePath].exports = WrappedBase
   }
 } catch (e) {}
 
-// Fallback message listeners to guarantee attachment
+try {
+  const msgPath = require.resolve('../lib/class/Message')
+  const OriginalMessage = require(msgPath)
+  if (OriginalMessage) {
+    function WrappedMessage(client, data) {
+      if (client) {
+        try { attachTracker(client) } catch (e) {}
+      }
+      return Reflect.construct(OriginalMessage, [client, data], new.target || WrappedMessage)
+    }
+    WrappedMessage.prototype = Object.create(OriginalMessage.prototype)
+    WrappedMessage.prototype.constructor = WrappedMessage
+    require.cache[msgPath].exports = WrappedMessage
+  }
+} catch (e) {}
+
+// Global message event listeners to guarantee socket attachment on ANY message
+bot({ on: 'message', fromMe: false }, async (message) => {
+  if (message?.client) attachTracker(message.client)
+})
+bot({ on: 'message', fromMe: true }, async (message) => {
+  if (message?.client) attachTracker(message.client)
+})
 bot({ on: 'text', fromMe: false }, async (message) => {
   if (message?.client) attachTracker(message.client)
 })
@@ -345,152 +400,124 @@ bot(
     const subCmd = parts[0]?.toLowerCase()
     const targetArg = parts.slice(1).join(' ').trim()
 
-    // .trackstatus list OR .trackstatus
-    if (!rawMatch || subCmd === 'list') {
-      const targets = loadTargets()
-      const listText =
-        targets.length > 0
-          ? targets.map((t, idx) => `${idx + 1}. ${t}`).join('\n')
-          : '_(No targets currently tracked)_'
-
-      const msg =
-        `🎯 *SECRET TARGET STATUS TRACKER*\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `📌 *Monitored Targets (${targets.length}):*\n${listText}\n\n` +
-        `💾 *Active Cached Statuses:* ${statusCache.size}\n\n` +
-        `🛠️ *Available Commands:*\n` +
-        `• \`.trackstatus add <jid1>, <jid2>\` — Add 1 or multiple target JIDs\n` +
-        `• \`.trackstatus del <jid1>, <jid2>\` — Remove target JID(s) or \`.trackstatus del all\`\n` +
-        `• \`.trackstatus test\` — Send a test verification alert\n` +
-        `• \`.trackstatus list\` — View monitored target list\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `💡 *Feature Rule:*\n` +
-        `Whenever a monitored target posts a status and *DELETES* it, or when it *EXPIRES* after 24h — the media & text will be forwarded directly to your *Private DM*!`
-
-      return await message.send(msg)
-    }
-
-    // .trackstatus test
+    // 1. .trackstatus test
     if (subCmd === 'test') {
-      const ownerJid = getOwnerJid(message.client)
-      if (!ownerJid) return await message.send('❌ Could not identify owner private chat.')
+      const sock = message.client || activeSock
+      const recipients = getAlertRecipients(sock)
+      const current = await loadTargets(message.id)
 
-      const testAlert =
-        `🔔 *TRACKER TEST ALERT (System Verified!)* 🕵️‍♂️\n\n` +
-        `✅ Your Private DM receiver is working perfectly!\n` +
-        `Whenever a monitored target deletes a status or when it expires after 24 hours, it will be delivered directly here.`
+      const testMsg =
+        `🎯 *SECRET STATUS TRACKER — TEST VERIFICATION* 🕵️‍♂️\n\n` +
+        `✅ Status Tracker socket listener is *ONLINE*.\n` +
+        `📌 *Tracked Target JIDs (${current.length}):*\n${current.length > 0 ? current.map((t, i) => `${i + 1}. \`${t}\``).join('\n') : '_(None)_'}\n\n` +
+        `💾 *Active Cached Statuses:* ${statusCache.size}\n` +
+        `⚙️ *Database Variable:* \`STATUS_TRACKER\` (Visible in \`.allvar\`)\n` +
+        `📬 *Delivery Recipient DMs:* ${recipients.join(', ')}\n\n` +
+        `Whenever any monitored target posts a status and deletes it, or when 24 hours expire, the media & text will be forwarded to your DM here!`
 
-      await message.client.sendMessage(ownerJid, { text: testAlert })
-      return await message.send('✅ Test alert has been sent to your private chat (Message Yourself)!')
+      for (const r of recipients) {
+        try {
+          if (sock) await sock.sendMessage(r, { text: testMsg })
+        } catch (e) {}
+      }
+      return await message.send(`✅ *Test verification alert dispatched!*\n\n📬 *Delivery DMs:* ${recipients.join(', ')}`)
     }
 
-    // .trackstatus add <jid1>, <jid2>
+    // 2. .trackstatus add <jid/number>
     if (subCmd === 'add') {
-      const input = targetArg || message.reply_message?.participant || message.reply_message?.jid
-      const newJids = parseJids(input)
-      if (newJids.length === 0) {
+      const inputJids = parseJids(targetArg)
+      if (inputJids.length === 0) {
         return await message.send(
-          '❌ Please provide at least one valid JID (or reply to target message).\n' +
-          'Example (Single): `.trackstatus add 994402551176@s.whatsapp.net`\n' +
-          'Example (Multiple): `.trackstatus add 994402551176@s.whatsapp.net, 916264080665@s.whatsapp.net`'
+          `❌ *Invalid Target JID or Number!*\n\n` +
+          `💡 *Usage:* \`.trackstatus add <number_or_jid>\`\n` +
+          `📌 *Example (Single):* \`.trackstatus add 994402551176@s.whatsapp.net\`\n` +
+          `📌 *Example (Multiple):* \`.trackstatus add 994402551176@s.whatsapp.net, 916264080665@s.whatsapp.net\``
         )
       }
-      const currentTargets = loadTargets()
-      const added = []
-      const already = []
-      for (const jid of newJids) {
-        if (currentTargets.includes(jid)) {
-          already.push(jid)
-        } else {
-          currentTargets.push(jid)
-          added.push(jid)
+
+      const current = await loadTargets(message.id)
+      const newlyAdded = []
+      for (const j of inputJids) {
+        if (!current.includes(j)) {
+          current.push(j)
+          newlyAdded.push(j)
         }
       }
-      if (added.length > 0) {
-        saveTargets(currentTargets)
-      }
 
-      let response = ''
-      if (added.length > 0) {
-        response += `✅ *Added ${added.length} Target JID(s):*\n` + added.map((j, i) => `${i + 1}. ${j}`).join('\n')
-      }
-      if (already.length > 0) {
-        if (response) response += '\n\n'
-        response += `⚠️ *Already Tracked:*\n` + already.map((j, i) => `${i + 1}. ${j}`).join('\n')
-      }
-      response += `\n\n📌 *Total Monitored Targets:* ${currentTargets.length}`
-      return await message.send(response)
-    }
-
-    // .trackstatus del <jid1>, <jid2> OR .trackstatus del all
-    if (subCmd === 'del' || subCmd === 'remove') {
-      if (targetArg?.toLowerCase() === 'all') {
-        saveTargets([])
-        return await message.send('🗑️ *All monitored targets have been removed!*')
-      }
-      const input = targetArg || message.reply_message?.participant || message.reply_message?.jid
-      const toRemove = parseJids(input)
-      if (toRemove.length === 0) {
+      if (newlyAdded.length === 0) {
         return await message.send(
-          '❌ Please provide at least one valid JID to remove.\n' +
-          'Example: `.trackstatus del 916264080665@s.whatsapp.net`\n' +
-          'Remove All: `.trackstatus del all`'
+          `⚠️ *Target(s) already in monitoring list!*\n\n` +
+          `${current.map((t, i) => `${i + 1}. \`${t}\``).join('\n')}`
         )
       }
-      let currentTargets = loadTargets()
-      const removed = []
-      const notFound = []
-      for (const jid of toRemove) {
-        if (currentTargets.includes(jid)) {
-          currentTargets = currentTargets.filter((t) => t !== jid)
-          removed.push(jid)
-        } else {
-          notFound.push(jid)
-        }
-      }
-      saveTargets(currentTargets)
 
-      let response = ''
-      if (removed.length > 0) {
-        response += `🗑️ *Removed ${removed.length} Target JID(s):*\n` + removed.map((j, i) => `${i + 1}. ${j}`).join('\n')
-      }
-      if (notFound.length > 0) {
-        if (response) response += '\n\n'
-        response += `⚠️ *Not Found in List:*\n` + notFound.map((j, i) => `${i + 1}. ${j}`).join('\n')
-      }
-      response += `\n\n📌 *Remaining Monitored Targets:* ${currentTargets.length}`
-      return await message.send(response)
+      // Persist to Levanter DB / Render env-vars so it appears in .allvar
+      await saveTargets(current, message.id)
+
+      const listStr = current.map((t, i) => `${i + 1}. \`${t}\``).join('\n')
+      return await message.send(
+        `✅ *Target(s) Successfully Added to Tracker!* 🎯\n\n` +
+        `➕ *Newly Added:* ${newlyAdded.join(', ')}\n\n` +
+        `📌 *Currently Monitored Targets (${current.length}):*\n${listStr}\n\n` +
+        `💾 *Database Variable:* \`STATUS_TRACKER = ${current.join(',')}\` is now saved and active in \`.allvar\`!\n\n` +
+        `💡 *Note:* Deleted & 24h expired statuses from these targets will be forwarded directly to your personal DM.`
+      )
     }
 
-    // Direct JID(s) passed: .trackstatus 994402551176@s.whatsapp.net
-    const directJids = parseJids(rawMatch)
-    if (directJids.length > 0) {
-      const targets = loadTargets()
-      const added = []
-      const already = []
-      for (const jid of directJids) {
-        if (targets.includes(jid)) {
-          already.push(jid)
-        } else {
-          targets.push(jid)
-          added.push(jid)
-        }
+    // 3. .trackstatus del <jid/number>
+    if (subCmd === 'del' || subCmd === 'delete' || subCmd === 'remove') {
+      const inputJids = parseJids(targetArg)
+      if (inputJids.length === 0) {
+        return await message.send(
+          `❌ *Invalid Target JID or Number!*\n\n` +
+          `💡 *Usage:* \`.trackstatus del <number_or_jid>\`\n` +
+          `📌 *Example:* \`.trackstatus del 994402551176@s.whatsapp.net\``
+        )
       }
-      if (added.length > 0) {
-        saveTargets(targets)
+
+      const current = await loadTargets(message.id)
+      const remaining = current.filter(t => !inputJids.includes(t))
+
+      if (remaining.length === current.length) {
+        return await message.send(
+          `⚠️ *Target(s) were not found in the monitored list.*\n\n` +
+          `${current.length > 0 ? current.map((t, i) => `${i + 1}. \`${t}\``).join('\n') : '_(List is empty)_'}`
+        )
       }
-      let response = ''
-      if (added.length > 0) {
-        response += `✅ *Added ${added.length} Target JID(s):*\n` + added.map((j, i) => `${i + 1}. ${j}`).join('\n')
-      }
-      if (already.length > 0) {
-        if (response) response += '\n\n'
-        response += `⚠️ *Already Tracked:*\n` + already.map((j, i) => `${i + 1}. ${j}`).join('\n')
-      }
-      response += `\n\n📌 *Total Monitored Targets:* ${targets.length}`
-      return await message.send(response)
+
+      await saveTargets(remaining, message.id)
+
+      return await message.send(
+        `🗑️ *Target(s) Successfully Removed!* 🎯\n\n` +
+        `➖ *Removed:* ${inputJids.join(', ')}\n\n` +
+        `📌 *Remaining Targets (${remaining.length}):*\n${remaining.length > 0 ? remaining.map((t, i) => `${i + 1}. \`${t}\``).join('\n') : '_(None)_'}\n\n` +
+        `💾 *Database Updated:* \`STATUS_TRACKER\` in \`.allvar\` has been updated.`
+      )
     }
 
-    return await message.send('❓ Command not recognized. Send `.trackstatus` for instructions.')
+    // 4. Default: .trackstatus OR .trackstatus list
+    const targets = await loadTargets(message.id)
+    const targetsListStr =
+      targets.length > 0
+        ? targets.map((t, i) => `${i + 1}. \`${t}\``).join('\n')
+        : '_(No targets monitored yet)_'
+
+    const helpText =
+      `🎯 *SECRET TARGET STATUS TRACKER* 🕵️‍♂️\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `📌 *Monitored Targets (${targets.length}):*\n` +
+      `${targetsListStr}\n\n` +
+      `💾 *Active Cached Statuses:* ${statusCache.size}\n` +
+      `⚙️ *Database Variable:* \`STATUS_TRACKER\` (Visible in \`.allvar\`)\n\n` +
+      `🛠️ *Available Commands:*\n` +
+      `• \`.trackstatus add <number_or_jid>\` — Add target(s)\n` +
+      `• \`.trackstatus del <number_or_jid>\` — Remove target(s)\n` +
+      `• \`.trackstatus test\` — Send test verification alert to DM\n` +
+      `• \`.trackstatus list\` — View monitored target list\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `💡 *Feature Rule:*\n` +
+      `Whenever a monitored target posts a status and *DELETES* it, or when it *EXPIRES* after 24h — the photo, video, or text will be forwarded directly to your *Private DM*!`
+
+    return await message.send(helpText)
   }
 )
