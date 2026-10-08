@@ -4,7 +4,6 @@ const { bot } = require('../lib')
 
 // Persistent target storage file
 const TARGETS_FILE = path.join(__dirname, '../tracked_targets.json')
-const DEFAULT_TARGETS = ['994402551176@s.whatsapp.net']
 
 // In-memory status cache: msgId -> statusItem
 const statusCache = new Map()
@@ -47,9 +46,7 @@ function loadTargets() {
   } catch (err) {
     console.error('[StatusTracker] Error reading targets file:', err.message)
   }
-  // Fallback to default
-  saveTargets(DEFAULT_TARGETS)
-  return [...DEFAULT_TARGETS]
+  return []
 }
 
 // Helper: Save targets

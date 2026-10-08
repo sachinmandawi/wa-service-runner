@@ -66,7 +66,6 @@ E. Secret Target Status Tracker (Sirf Specific logon ke Status Spy & Anti-Delete
      Jab Target 2 koi status delete karega, uska alag alert DM me aayega:
        👤 Target JID: 916264080665@s.whatsapp.net
      Aur agar koi delete nahi karta to 24h baad expired alert me bhi dono alag-alag aayenge!
-   (Default Target: 994402551176@s.whatsapp.net pehle se tracked hai!)
 
 F. Profile & Bio Spy / JID Finder (.whois)
    - KYA KARTA HAI:
