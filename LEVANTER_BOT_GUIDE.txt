@@ -156,6 +156,8 @@ D. DISABLE / CANCEL KAISE KAREIN:
 ---------------------------------------------
 - Contact / Profile Spy & JID Finder:        .whois 916264080665@s.whatsapp.net  (ya reply karke .whois)
 - Kaun-Kaun se features ON hain list dekhna: .allvar
+- Single Setting / Variable Check karna:     .getvar STATUS_TRACKER
+- Setting Direct Set karna:                  .setvar STATUS_TRACKER = 994402551176@s.whatsapp.net
 - Bot Online hai ya nahi check karna:        .ping  ya  .alive
 - Bot ko Restart karna:                      .reboot
 
