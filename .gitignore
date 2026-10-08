@@ -1,0 +1,9 @@
+# Dependencies & system files
+node_modules/
+.env
+*.log
+temp_levanter/
+extract.js
+render_req.json
+out.txt
+test.js

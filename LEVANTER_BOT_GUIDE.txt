@@ -1,0 +1,123 @@
+=====================================================
+    LEVANTER BOT — MASTER GUIDE & FULL INSTRUCTIONS
+=====================================================
+
+1. PRIVACY & SPY FEATURES (Enable / Disable)
+---------------------------------------------
+A. Anti-Delete (Delete huye message dekhna)
+   - ENABLE (Personal Chat me aaye):  .delete p
+   - DISABLE (Band karna):            .delete off
+
+B. Anti-Edit (Edit hone se pehle ka message dekhna)
+   - ENABLE (Personal Chat me aaye):  .antiedit p
+   - DISABLE (Band karna):            .antiedit off
+
+C. Auto Status View (Sabke Status Khud Dekhna)
+   - ENABLE (Auto-Seen On):           .status on
+   - DISABLE (Auto-Seen Off):         .status off
+
+D. AFK Mode (Away From Keyboard / Busy Status)
+   - ENABLE (Busy Mode On):           .afk Main abhi busy hoon, baad me baat karta hoon.
+   - DISABLE (Busy Mode Off):         .afk off
+     (Ya koi bhi message bhejne se AFK apne aap OFF ho jata hai)
+
+E. Secret Target Status Tracker (Option B: Sirf 1-2 logon ke Status track karna)
+   - KYA KARTA HAI:
+     Target contact (jaise Girlfriend) jab bhi koi status lagakar DELETE karegi,
+     ya jab 24 ghante poore hone par status EXPIRE hokar hatega —
+     bot us photo, video ya text ko caption ke sath direct aapke PERSONAL DM me bhej dega!
+   - CHECK / LIST KAREIN:    .trackstatus
+   - TARGET ADD KAREIN:      .trackstatus add 994402551176
+   - TARGET HATAYEIN:        .trackstatus del 994402551176
+   - TEST KAREIN:            .trackstatus test
+   (Default: 994402551176 pehle se tracked hai!)
+
+
+2. MESSAGE SCHEDULER (.setschedule)
+---------------------------------------------
+* Formula: .setschedule JID, Minute-Hour-Tareekh-Mahina, once
+* Note: Kisi bhi message/photo par REPLY (Swipe) karke command bhejni hai.
+* Rule: Number ke peeche @s.whatsapp.net lagana zaroori hai!
+  (Example: 994402551176@s.whatsapp.net)
+
+A. SINGLE PERSON KO BHEJNA:
+   - Kal Subah 7:00 AM (9 Oct):
+     .setschedule 994402551176@s.whatsapp.net, 0-7-9-10, once
+
+   - Kal Raat 11:00 PM (9 Oct):
+     .setschedule 994402551176@s.whatsapp.net, 0-23-9-10, once
+
+   - Parso Subah 7:00 AM (10 Oct):
+     .setschedule 994402551176@s.whatsapp.net, 0-7-10-10, once
+
+   - ROZ Subah 7:00 AM Daily (Good Morning):
+     .setschedule 994402551176@s.whatsapp.net, 0-7
+
+   - ROZ Raat 11:00 PM Daily (Good Night):
+     .setschedule 994402551176@s.whatsapp.net, 0-23
+
+B. EK SE ZYADA (MULTIPLE) LOGON KO EK SATH SCHEDULE KARNA:
+   (Sabhi JIDs ke beech me comma ',' lagana hai):
+   - Kal Subah 7:00 AM par 3 logon ko:
+     .setschedule 994402551176@s.whatsapp.net, 919876543210@s.whatsapp.net, 918765432109@s.whatsapp.net, 0-7-9-10, once
+
+   - Roz Subah 7:00 AM par 2 logon ko:
+     .setschedule 994402551176@s.whatsapp.net, 919876543210@s.whatsapp.net, 0-7
+
+C. CHECK KAISE KAREIN:
+   .getschedule
+
+D. DISABLE / CANCEL KAISE KAREIN:
+   .delschedule all
+
+
+3. STATUS SCHEDULER (.scstatus)
+---------------------------------------------
+* Formula: .scstatus [Audience] | Minute-Hour-Tareekh-Mahina
+* Note: Kisi photo, video ya text par REPLY (Swipe) karke chalana hai.
+
+A. SET / ENABLE KAISE KAREIN:
+   - Sabhi Contacts ke liye (Kal Subah 7:00 AM):
+     .scstatus contact|0-7-9-10
+
+   - Secret Status - Sirf Girlfriend ke liye (Kal Subah 7:00 AM):
+     .scstatus 994402551176@s.whatsapp.net|0-7-9-10
+
+   - Secret Status - 10 Doston ke liye (Kal Subah 7:00 AM):
+     .scstatus 994402551176@s.whatsapp.net, 919876543210@s.whatsapp.net, 918765432109@s.whatsapp.net|0-7-9-10
+
+B. WHATSAPP STATUS PRIVACY ("Only Share With...") KA RULE:
+   Agar aapke WhatsApp me Status Privacy pehle se set hai:
+   - 'contact' likhoge:
+     Status sirf unhi logon ko dikhega jo WhatsApp Privacy me selected hain (Privacy safe rahegi).
+   - Specific 'JID' likhoge:
+     Status WhatsApp privacy ko chhodkar SIRF us ek JID wale bande ko dikhega (Secret Status).
+
+C. CHECK KAISE KAREIN:
+   .scstatus list
+
+D. DISABLE / CANCEL KAISE KAREIN:
+   .scstatus delete all
+
+
+4. GROUP SECURITY PLUGINS (Admins ke liye)
+---------------------------------------------
+- Anti-Link:  .antilink on  (Band: .antilink off)
+- Anti-Fake:  .antifake on  (Band: .antifake off)
+- Anti-Word:  .antiword on  (Band: .antiword off)
+
+
+5. BOT SYSTEM & SETTINGS CHECK
+---------------------------------------------
+- Kaun-Kaun se features ON hain list dekhna: .allvar
+- Bot Online hai ya nahi check karna:        .ping  ya  .alive
+- Bot ko Restart karna:                      .reboot
+
+
+6. QUICK FORMULA TRICK:
+---------------------------------------------
+- Time: Minute - Hour (24-hour: Subah 7 AM = 0-7 | Raat 11 PM = 0-23)
+- Date: Tareekh - Mahina (9 October = 9-10)
+- Ek Baar: Aage ', once' lagao
+- Roz (Daily): Aage se ', once' aur date hata do
+=====================================================
