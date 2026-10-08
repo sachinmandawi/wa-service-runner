@@ -21,12 +21,26 @@ function cleanJid(jid) {
   return num ? `${num}@s.whatsapp.net` : ''
 }
 
+// Helper: Parse multiple JIDs from string (comma or space separated)
+function parseJids(input) {
+  if (!input || typeof input !== 'string') return []
+  const tokens = input.split(/[\s,]+/).filter(Boolean)
+  const results = []
+  for (const token of tokens) {
+    const cleaned = cleanJid(token)
+    if (cleaned && !results.includes(cleaned)) {
+      results.push(cleaned)
+    }
+  }
+  return results
+}
+
 // Helper: Load targets
 function loadTargets() {
   try {
     if (fs.existsSync(TARGETS_FILE)) {
       const data = JSON.parse(fs.readFileSync(TARGETS_FILE, 'utf8'))
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         return data.map(cleanJid).filter(Boolean)
       }
     }
@@ -345,11 +359,11 @@ bot(
       const msg =
         `🎯 *SECRET TARGET STATUS TRACKER*\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `📌 *Monitored Targets:*\n${listText}\n\n` +
+        `📌 *Monitored Targets (${targets.length}):*\n${listText}\n\n` +
         `💾 *Active Cached Statuses:* ${statusCache.size}\n\n` +
         `🛠️ *Available Commands:*\n` +
-        `• \`.trackstatus add <jid>\` — Add a new target JID\n` +
-        `• \`.trackstatus del <jid>\` — Remove a target JID\n` +
+        `• \`.trackstatus add <jid1>, <jid2>\` — Add 1 or multiple target JIDs\n` +
+        `• \`.trackstatus del <jid1>, <jid2>\` — Remove target JID(s) or \`.trackstatus del all\`\n` +
         `• \`.trackstatus test\` — Send a test verification alert\n` +
         `• \`.trackstatus list\` — View monitored target list\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -373,53 +387,111 @@ bot(
       return await message.send('✅ Test alert has been sent to your private chat (Message Yourself)!')
     }
 
-    // .trackstatus add <jid>
+    // .trackstatus add <jid1>, <jid2>
     if (subCmd === 'add') {
-      const inputJid = targetArg || message.reply_message?.participant || message.reply_message?.jid
-      const jid = cleanJid(inputJid)
-      if (!jid) {
-        return await message.send('❌ Please provide a valid JID (or reply to target message).\nExample: `.trackstatus add 994402551176@s.whatsapp.net`')
-      }
-      const targets = loadTargets()
-      if (targets.includes(jid)) {
-        return await message.send(`⚠️ This target JID is already being tracked:\n${jid}`)
-      }
-      targets.push(jid)
-      saveTargets(targets)
-      return await message.send(
-        `✅ *Target JID Added Successfully!*\n${jid}\nStatus updates from this target will now be forwarded upon deletion or expiration.`
-      )
-    }
-
-    // .trackstatus del <jid>
-    if (subCmd === 'del' || subCmd === 'remove') {
-      const inputJid = targetArg || message.reply_message?.participant || message.reply_message?.jid
-      const jid = cleanJid(inputJid)
-      if (!jid) {
-        return await message.send('❌ Please provide a valid JID.\nExample: `.trackstatus del 994402551176@s.whatsapp.net`')
-      }
-      let targets = loadTargets()
-      if (!targets.includes(jid)) {
-        return await message.send('⚠️ This target JID is not in the tracked list.')
-      }
-      targets = targets.filter((t) => t !== jid)
-      saveTargets(targets)
-      return await message.send(`🗑️ *Target JID Removed:*\n${jid}`)
-    }
-
-    // Direct JID passed: .trackstatus 994402551176@s.whatsapp.net
-    const directJid = cleanJid(rawMatch)
-    if (directJid) {
-      const targets = loadTargets()
-      if (!targets.includes(directJid)) {
-        targets.push(directJid)
-        saveTargets(targets)
+      const input = targetArg || message.reply_message?.participant || message.reply_message?.jid
+      const newJids = parseJids(input)
+      if (newJids.length === 0) {
         return await message.send(
-          `✅ *Target JID Added Successfully!*\n${directJid}\nNow tracking status updates from this target.`
+          '❌ Please provide at least one valid JID (or reply to target message).\n' +
+          'Example (Single): `.trackstatus add 994402551176@s.whatsapp.net`\n' +
+          'Example (Multiple): `.trackstatus add 994402551176@s.whatsapp.net, 916264080665@s.whatsapp.net`'
         )
-      } else {
-        return await message.send(`ℹ️ This target JID is already being tracked:\n${directJid}`)
       }
+      const currentTargets = loadTargets()
+      const added = []
+      const already = []
+      for (const jid of newJids) {
+        if (currentTargets.includes(jid)) {
+          already.push(jid)
+        } else {
+          currentTargets.push(jid)
+          added.push(jid)
+        }
+      }
+      if (added.length > 0) {
+        saveTargets(currentTargets)
+      }
+
+      let response = ''
+      if (added.length > 0) {
+        response += `✅ *Added ${added.length} Target JID(s):*\n` + added.map((j, i) => `${i + 1}. ${j}`).join('\n')
+      }
+      if (already.length > 0) {
+        if (response) response += '\n\n'
+        response += `⚠️ *Already Tracked:*\n` + already.map((j, i) => `${i + 1}. ${j}`).join('\n')
+      }
+      response += `\n\n📌 *Total Monitored Targets:* ${currentTargets.length}`
+      return await message.send(response)
+    }
+
+    // .trackstatus del <jid1>, <jid2> OR .trackstatus del all
+    if (subCmd === 'del' || subCmd === 'remove') {
+      if (targetArg?.toLowerCase() === 'all') {
+        saveTargets([])
+        return await message.send('🗑️ *All monitored targets have been removed!*')
+      }
+      const input = targetArg || message.reply_message?.participant || message.reply_message?.jid
+      const toRemove = parseJids(input)
+      if (toRemove.length === 0) {
+        return await message.send(
+          '❌ Please provide at least one valid JID to remove.\n' +
+          'Example: `.trackstatus del 916264080665@s.whatsapp.net`\n' +
+          'Remove All: `.trackstatus del all`'
+        )
+      }
+      let currentTargets = loadTargets()
+      const removed = []
+      const notFound = []
+      for (const jid of toRemove) {
+        if (currentTargets.includes(jid)) {
+          currentTargets = currentTargets.filter((t) => t !== jid)
+          removed.push(jid)
+        } else {
+          notFound.push(jid)
+        }
+      }
+      saveTargets(currentTargets)
+
+      let response = ''
+      if (removed.length > 0) {
+        response += `🗑️ *Removed ${removed.length} Target JID(s):*\n` + removed.map((j, i) => `${i + 1}. ${j}`).join('\n')
+      }
+      if (notFound.length > 0) {
+        if (response) response += '\n\n'
+        response += `⚠️ *Not Found in List:*\n` + notFound.map((j, i) => `${i + 1}. ${j}`).join('\n')
+      }
+      response += `\n\n📌 *Remaining Monitored Targets:* ${currentTargets.length}`
+      return await message.send(response)
+    }
+
+    // Direct JID(s) passed: .trackstatus 994402551176@s.whatsapp.net
+    const directJids = parseJids(rawMatch)
+    if (directJids.length > 0) {
+      const targets = loadTargets()
+      const added = []
+      const already = []
+      for (const jid of directJids) {
+        if (targets.includes(jid)) {
+          already.push(jid)
+        } else {
+          targets.push(jid)
+          added.push(jid)
+        }
+      }
+      if (added.length > 0) {
+        saveTargets(targets)
+      }
+      let response = ''
+      if (added.length > 0) {
+        response += `✅ *Added ${added.length} Target JID(s):*\n` + added.map((j, i) => `${i + 1}. ${j}`).join('\n')
+      }
+      if (already.length > 0) {
+        if (response) response += '\n\n'
+        response += `⚠️ *Already Tracked:*\n` + already.map((j, i) => `${i + 1}. ${j}`).join('\n')
+      }
+      response += `\n\n📌 *Total Monitored Targets:* ${targets.length}`
+      return await message.send(response)
     }
 
     return await message.send('❓ Command not recognized. Send `.trackstatus` for instructions.')
